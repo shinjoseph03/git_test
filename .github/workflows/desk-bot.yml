@@ -1,0 +1,112 @@
+name: Desk reservation bot
+
+on:
+  schedule:
+    # ~6:30am America/Los_Angeles (14:30 UTC). Manual runs for DST-sensitive timing.
+    - cron: "30 14 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "book preferred desk, or clear name on dates"
+        required: true
+        default: book
+        type: choice
+        options:
+          - book
+          - clear
+      date:
+        description: "Override today for book mode (YYYY-MM-DD). Empty = today in config timezone."
+        required: false
+        type: string
+      clear_dates:
+        description: "Comma-separated YYYY-MM-DD for clear mode (overrides config clear_dates)"
+        required: false
+        type: string
+      dry_run:
+        description: "Compute changes but do not upload"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run dry-run unit tests
+        run: pytest -q
+
+  run-bot:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Prepare config
+        run: |
+          if [ ! -f config.yaml ]; then
+            cp config.example.yaml config.yaml
+          fi
+      - name: Check Azure secrets
+        id: secrets
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          if [ -z "$AZURE_TENANT_ID" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Azure secrets not set — skipping live SharePoint run (tests already passed)."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run bot
+        if: steps.secrets.outputs.configured == 'true'
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          SHAREPOINT_DRIVE_ITEM_ID: ${{ secrets.SHAREPOINT_DRIVE_ITEM_ID }}
+          SHAREPOINT_SITE_HOSTNAME: ${{ secrets.SHAREPOINT_SITE_HOSTNAME }}
+          SHAREPOINT_SITE_PATH: ${{ secrets.SHAREPOINT_SITE_PATH }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+          INPUT_DATE: ${{ github.event.inputs.date }}
+          INPUT_CLEAR_DATES: ${{ github.event.inputs.clear_dates }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          MODE="book"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "${INPUT_MODE:-}" ]; then
+            MODE="$INPUT_MODE"
+          fi
+          DRY_RUN="false"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "${INPUT_DRY_RUN:-}" = "true" ]; then
+            DRY_RUN="true"
+          fi
+          export DRY_RUN
+          ARGS=(--mode "$MODE")
+          if [ "$MODE" = "book" ] && [ -n "${INPUT_DATE:-}" ]; then
+            ARGS+=(--date "$INPUT_DATE")
+          fi
+          if [ "$MODE" = "clear" ] && [ -n "${INPUT_CLEAR_DATES:-}" ]; then
+            IFS=',' read -ra DATES <<< "$INPUT_CLEAR_DATES"
+            for d in "${DATES[@]}"; do
+              d="$(echo "$d" | xargs)"
+              [ -n "$d" ] && ARGS+=(--clear-date "$d")
+            done
+          fi
+          python -m desk_bot "${ARGS[@]}"

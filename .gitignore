@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+config.yaml
+*.xlsx
+!tests/fixtures/**
+.DS_Store
+.mypy_cache/
+.ruff_cache/

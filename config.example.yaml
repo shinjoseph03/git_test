@@ -1,0 +1,26 @@
+# Copy to config.yaml (or set CONFIG_PATH). Do not commit real secrets.
+
+display_name: "Your Name"
+preferred_desk: "Desk 01"
+# Office days the bot will attempt to book (Mon=0 … Sun=6, or names below).
+office_weekdays:
+  - Mon
+  - Tue
+  - Thu
+  - Fri
+timezone: America/Los_Angeles
+
+# Optional: dates (YYYY-MM-DD) to clear in clear mode. workflow_dispatch can override.
+clear_dates: []
+
+sharepoint:
+  # Desk Reservation Master.xlsx — LasVegasOfficeHomepage team site
+  file_url: "https://hdrinc.sharepoint.com/:x:/r/teams/LasVegasOfficeHomepage/_layouts/15/doc2.aspx?sourcedoc=%7B4CC41F6E-391F-4BBC-B75B-3D0BABCA2BE5%7D&file=Desk%20Reservation%20Master.xlsx&action=default&mobileredirect=true"
+  site_hostname: "hdrinc.sharepoint.com"
+  site_path: "/teams/LasVegasOfficeHomepage"
+  # Drive item GUID from sourcedoc (also settable via SHAREPOINT_DRIVE_ITEM_ID secret)
+  drive_item_id: "4CC41F6E-391F-4BBC-B75B-3D0BABCA2BE5"
+  # Worksheet tab that holds the Master Bookings grid
+  worksheet_name: "Master Bookings"
+  # Header row is 1; data starts at row 2
+  header_row: 1
